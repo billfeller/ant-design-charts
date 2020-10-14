@@ -1,13 +1,17 @@
 const fs = require('fs');
 const esprima = require('esprima');
 const estraverse = require('estraverse');
+const babelCore = require('@babel/core');
 const escodegen = require('escodegen');
-const { get } = require('loadsh');
+const chalk = require('chalk');
+const { get, find } = require('loadsh');
 const { dataUrl } = require('./constants');
+const log = console.log;
 
 let blcokBody = '';
 let fetchUrl = '';
-let title = '';
+let chartName = '';
+let dataKey = '';
 const filterParams = ['then'];
 
 /**
@@ -38,7 +42,7 @@ const isNullExpression = (node) => {
  * isFetch
  * @param {*} node
  */
-const isFetch = (node, parent) => {
+const isFetch = (node) => {
   return node.type === 'MemberExpression' && get(node, 'object.callee.name') === 'fetch';
 };
 
@@ -63,25 +67,27 @@ const getUrl = (url) => {
   return res.filePath;
 };
 
-/**
- * 状态重置
- */
-const init = () => {
+// 状态重置
+const reset = () => {
   blcokBody = '';
   fetchUrl = '';
-  title = '';
+  chartName = '';
+  dataKey = '';
 };
 
-/**
- * 提取核心信息
- */
+// 提取核心信息
 const getOptions = (ast) => {
   estraverse.replace(ast, {
     enter: (node, parent) => {
       if (isFetch(node)) {
         fetchUrl = node.object.arguments[0].value;
       }
-      if (node.type === 'ArrowFunctionExpression' && get(node, ['params', 0, 'name']) === 'data') {
+      if (
+        node.type === 'ArrowFunctionExpression' &&
+        ['data', 'fetchData'].includes(get(node, ['params', 0, 'name'])) &&
+        get(node, ['body', 'type']) === 'BlockStatement'
+      ) {
+        dataKey = get(node, ['params', 0, 'name']);
         const block = get(node, 'body.body', []);
         block.forEach((item) => {
           blcokBody += escodegen.generate(item);
@@ -89,6 +95,7 @@ const getOptions = (ast) => {
         return estraverse.VisitorOption.Remove;
       }
       if (isNewExpression(node)) {
+        chartName = get(node, 'init.callee.name');
         node.id.name = 'config';
         node.init = node.init.arguments[1];
       }
@@ -96,21 +103,11 @@ const getOptions = (ast) => {
   });
 };
 
-/**
- * 独立处理body
- */
+// 独立处理body
 const generateBody = (body) => {
   const bodyCode = esprima.parseModule(body, { loc: true, tokens: true });
   estraverse.replace(bodyCode, {
-    enter: (node, parent) => {
-      if (node.type === 'Property' && get(node, 'key.name') === 'title') {
-        const properties = get(node, 'value.properties', []);
-        properties.forEach((item) => {
-          if (get(item, 'key.name') === 'text') {
-            title = get(item, 'value.value');
-          }
-        });
-      }
+    enter: (node) => {
       if (isNewExpression(node)) {
         node.id.name = 'config';
         node.init = node.init.arguments[1];
@@ -123,9 +120,7 @@ const generateBody = (body) => {
   return escodegen.generate(bodyCode);
 };
 
-/**
- * 过滤多余信息
- */
+// 过滤多余信息
 const generateFile = (ast) => {
   estraverse.replace(ast, {
     enter: (node, parent) => {
@@ -142,7 +137,7 @@ const generateFile = (ast) => {
     leave: (node, parent) => {
       if (node.type === 'Identifier' && get(node, 'name') === 'CONSTANTCODE') {
         const code = `
-        const [data, setData] = useState([]);
+        const [${dataKey}, setData] = useState([]);
 
         useEffect(() => {
           asyncFetch();
@@ -167,16 +162,6 @@ const generateFile = (ast) => {
         node.id.name = 'config';
         node.init = node.init.arguments[1];
       }
-      if (!title) {
-        if (node.type === 'Property' && get(node, 'key.name') === 'title') {
-          const properties = get(node, 'value.properties', []);
-          properties.forEach((item) => {
-            if (get(item, 'key.name') === 'text') {
-              title = get(item, 'value.value');
-            }
-          });
-        }
-      }
     },
     fallback: (node) => {
       console.log('fallback: ', node.type);
@@ -184,17 +169,51 @@ const generateFile = (ast) => {
   });
 };
 
-const parseFile = (filePath) => {
-  init();
-  const jsCode = fs.readFileSync(filePath, 'utf-8');
-  const parseCode = esprima.parseModule(jsCode, { loc: true, tokens: true });
-  getOptions(parseCode);
-  generateFile(parseCode);
+const getMetaInfo = (filePath) => {
+  const pathArray = filePath.split('/');
+  const fileName = pathArray.pop();
+  const metaJsonCode = fs.readFileSync(`${pathArray.join('/')}/meta.json`, 'utf-8');
+  const demos = JSON.parse(metaJsonCode).demos;
+  const metaInfo = find(demos, (item) => item.filename === fileName);
+  return metaInfo;
+};
 
-  return {
-    code: escodegen.generate(parseCode),
-    title: title,
-  };
+const parseFile = (params, type) => {
+  try {
+    reset();
+    let jsCode = '';
+    let metaInfo = {};
+    if (type === 'code') {
+      jsCode = params;
+    } else {
+      jsCode = fs.readFileSync(params, 'utf-8');
+      metaInfo = getMetaInfo(params);
+      if (params.indexOf('.ts') !== -1) {
+        const { code } = babelCore.transformSync(jsCode, {
+          presets: ['@babel/preset-typescript'],
+          filename: params.split('/')[params.split('/').length - 1],
+          code: true,
+        });
+        jsCode = code;
+      }
+    }
+    const parseCode = esprima.parseModule(jsCode, { loc: true, tokens: true });
+    getOptions(parseCode);
+    generateFile(parseCode);
+    return {
+      code: escodegen.generate(parseCode),
+      title: get(metaInfo, 'title.zh'),
+      chartName,
+    };
+  } catch (err) {
+    log(chalk.red(`解析出错：params: ${params}; type: ${type}`));
+    log(chalk.red(`出错信息：${err}`));
+    return {
+      code: params,
+      title: '',
+      chartName,
+    };
+  }
 };
 
 module.exports = parseFile;

@@ -1,17 +1,25 @@
 import React, { useEffect, useImperativeHandle, forwardRef } from 'react';
-import { Bar as G2plotBar, BarConfig as G2plotProps } from '@antv/g2plot';
-import useChart from '../hooks/useChart';
+import { Bar as G2plotBar, BarOptions as G2plotProps } from '@antv/g2plot';
+import useChart, { ContainerProps } from '../hooks/useChart';
 import { ErrorBoundary } from '../base';
+import ChartLoading from '../util/createLoading';
 
-export interface BarConfig extends Omit<G2plotProps, 'tooltip'> {
+export interface BarConfig extends G2plotProps, ContainerProps {
   chartRef?: React.MutableRefObject<G2plotBar | undefined>;
-  style?: React.CSSProperties;
-  className?: string;
 }
 
 const BarChart = forwardRef((props: BarConfig, ref) => {
-  const { chartRef, style = {}, className, ...rest } = props;
-
+  const {
+    chartRef,
+    style = {
+      height: '100%',
+    },
+    className,
+    loading,
+    loadingTemplate,
+    errorTemplate,
+    ...rest
+  } = props;
   const { chart, container } = useChart<G2plotBar, BarConfig>(G2plotBar, rest);
   useEffect(() => {
     if (chartRef) {
@@ -22,12 +30,11 @@ const BarChart = forwardRef((props: BarConfig, ref) => {
     getChart: () => chart.current,
   }));
   return (
-    <ErrorBoundary>
+    <ErrorBoundary errorTemplate={errorTemplate}>
+      {loading && <ChartLoading loadingTemplate={loadingTemplate} />}
       <div className={className} style={style} ref={container} />
     </ErrorBoundary>
   );
 });
-
-BarChart.defaultProps = G2plotBar.getDefaultOptions();
 
 export default BarChart;

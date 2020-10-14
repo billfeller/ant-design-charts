@@ -1,17 +1,25 @@
 import React, { useEffect, useImperativeHandle, forwardRef } from 'react';
-import { Pie as G2plotPie, PieConfig as G2plotProps } from '@antv/g2plot';
-import useChart from '../hooks/useChart';
+import { Pie as G2plotPie, PieOptions as G2plotProps } from '@antv/g2plot';
+import useChart, { ContainerProps } from '../hooks/useChart';
 import { ErrorBoundary } from '../base';
+import ChartLoading from '../util/createLoading';
 
-export interface PieConfig extends Omit<G2plotProps, 'tooltip'> {
+export interface PieConfig extends G2plotProps, ContainerProps {
   chartRef?: React.MutableRefObject<G2plotPie | undefined>;
-  style?: React.CSSProperties;
-  className?: string;
 }
 
 const PieChart = forwardRef((props: PieConfig, ref) => {
-  const { chartRef, style = {}, className, ...rest } = props;
-
+  const {
+    chartRef,
+    style = {
+      height: '100%',
+    },
+    className,
+    loading,
+    loadingTemplate,
+    errorTemplate,
+    ...rest
+  } = props;
   const { chart, container } = useChart<G2plotPie, PieConfig>(G2plotPie, rest);
 
   useEffect(() => {
@@ -23,12 +31,11 @@ const PieChart = forwardRef((props: PieConfig, ref) => {
     getChart: () => chart.current,
   }));
   return (
-    <ErrorBoundary>
+    <ErrorBoundary errorTemplate={errorTemplate}>
+      {loading && <ChartLoading loadingTemplate={loadingTemplate} />}
       <div className={className} style={style} ref={container} />
     </ErrorBoundary>
   );
 });
-
-PieChart.defaultProps = G2plotPie.getDefaultOptions();
 
 export default PieChart;

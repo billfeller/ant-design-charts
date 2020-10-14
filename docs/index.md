@@ -34,7 +34,7 @@ import { Line } from '@ant-design/charts';
 
 const Page: React.FC = () => {
   const data = [
-    { year: '1991', value: 3 },
+    { year: '1991', value1: 3 },
     { year: '1992', value: 4 },
     { year: '1993', value: 3.5 },
     { year: '1994', value: 5 },
@@ -47,20 +47,15 @@ const Page: React.FC = () => {
 
   const config = {
     data,
-    title: {
-      visible: true,
-      text: '带数据点的折线图',
-    },
     xField: 'year',
     yField: 'value',
     point: {
-      visible: true,
       size: 5,
       shape: 'diamond',
+    },
+    label: {
       style: {
-        fill: 'white',
-        stroke: '#2593fc',
-        lineWidth: 2,
+        fill: '#aaa',
       },
     },
   };
@@ -90,20 +85,15 @@ const Page: React.FC = () => {
 
   const config = {
     data,
-    title: {
-      visible: true,
-      text: '带数据点的折线图',
-    },
     xField: 'year',
     yField: 'value',
     point: {
-      visible: true,
       size: 5,
       shape: 'diamond',
+    },
+    label: {
       style: {
-        fill: 'white',
-        stroke: '#2593fc',
-        lineWidth: 2,
+        fill: '#aaa',
       },
     },
   };
